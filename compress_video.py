@@ -18,23 +18,35 @@ def get_video_params(video):
     size = int(probe['format']['size'])
     return duration, nb_frames, size
 
-def compress_video(input_file_path, output_file_path, seconds_to_cut = 0):
+def compress_video(input_file_path, output_file_path, fps=25, seconds_to_cut=0, video_resolution="low", overwrite=True):
     """ Use video codec (encoder - decoder) to reduce file size
 
     Args:
-        in_file (str): path to the original video
+        input_file_path (str): path to the original video
+        output_file_path (str): path destination
+        fps (int): fps of the output video
+        seconds_to_cut (float): seconds to be removed at the end of the video
+        video_resolution ("low", "medium", "high"): quality of the output video, 480, 720, 1080 respectively
+        overwrite (bool): existing output file is replaced if True
     """
 
     duration, frames, ip_size = get_video_params(input_file_path)
     new_duration = duration - seconds_to_cut
-    fps = frames/duration
+
+    match(video_resolution):
+        case("low"):
+            video_resolution = 480
+        case("medium"):
+            video_resolution = 720
+        case("high"):
+            video_resolution = 1080
 
     cmd = [
         'ffmpeg', '-i', input_file_path, 
         '-t', str(new_duration),
-        '-vf', f'fps={25},scale=480:360',  # Adjust FPS and scale
+        '-vf', f'fps={fps},scale={video_resolution}:-1',  # Adjust FPS and scale
         '-c:v', 'libx265',  # Set codec to libx265 for compression
-        '-y',  # Overwrite output file if it exists
+        '-y' if overwrite else 'n',  # Overwrite output file if it exists
         output_file_path
     ]
         
@@ -60,3 +72,7 @@ def compress_video(input_file_path, output_file_path, seconds_to_cut = 0):
     duration, frames, op_size = get_video_params(output_file_path)
     diff_size = (ip_size - op_size)
     print(f"\nVideo processed! {diff_size/ip_size*100: .3f}% compressed ({diff_size/1024: .3f}kb)!")
+
+path = ""
+op_path = ""
+compress_video(path, op_path, )
