@@ -1,6 +1,7 @@
 import ffmpeg
 import subprocess
 from tqdm import tqdm
+import cv2
 
 def get_video_params(video):
     """ Get video parameters of interest, it can be modified as needed
@@ -18,7 +19,36 @@ def get_video_params(video):
     size = int(probe['format']['size'])
     return duration, nb_frames, size
 
-def compress_video(input_file_path, output_file_path, fps=25, seconds_to_cut=0, video_resolution="low", overwrite=True):
+def get_roi_to_crop(video_path):
+    # Open the video file
+    cap = cv2.VideoCapture(video_path)
+    
+    # Read the first frame
+    ret, frame = cap.read()
+    if not ret:
+        print("Failed to read the first frame.")
+        return None
+
+    # Display the first frame and let the user select the ROI
+    roi = cv2.selectROI("Select ROI", frame, showCrosshair=True)
+    cv2.destroyAllWindows()
+    
+    cap.release()
+
+    # roi is a tuple of (x, y, width, height)
+    return roi
+
+def compress_video(
+    input_file_path, 
+    output_file_path, 
+    fps=25, 
+    seconds_to_cut=0, 
+    video_resolution="low", 
+    overwrite=True, 
+    remove_audio=True, 
+    crop_video=True
+):
+    
     """ Use video codec (encoder - decoder) to reduce file size
 
     Args:
@@ -41,15 +71,25 @@ def compress_video(input_file_path, output_file_path, fps=25, seconds_to_cut=0, 
         case("high"):
             video_resolution = 1080
 
+    single_cmd = []
+    if crop_video:
+        x, y, w, h = get_roi_to_crop(input_file_path)
+        single_cmd = ('-vf', f'crop={w}:{h}:{x}:{y}')
+
+    # x, y, w, h = get_roi_to_crop(input_file_path) if crop_video else x, y, w, h = 0, 0, 0, 0
+    #'-vf', f'crop={w}:{h}:{x}:{y}'
+
     cmd = [
         'ffmpeg', '-i', input_file_path, 
         '-t', str(new_duration),
         '-vf', f'fps={fps},scale={video_resolution}:-1',  # Adjust FPS and scale
         '-c:v', 'libx265',  # Set codec to libx265 for compression
+        *single_cmd,
+        *(['-an'] if remove_audio else ['-c:a', 'copy']), # Remove audio from video -> ~64% size reduction
         '-y' if overwrite else 'n',  # Overwrite output file if it exists
         output_file_path
     ]
-        
+
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     pbar = tqdm(total=duration, unit='s', desc="Processing Video", ncols=100)
 
@@ -71,8 +111,4 @@ def compress_video(input_file_path, output_file_path, fps=25, seconds_to_cut=0, 
 
     duration, frames, op_size = get_video_params(output_file_path)
     diff_size = (ip_size - op_size)
-    print(f"\nVideo processed! {diff_size/ip_size*100: .3f}% compressed ({diff_size/1024: .3f}kb)!")
-
-path = ""
-op_path = ""
-compress_video(path, op_path, )
+    print(f"\nVideo processed! {diff_size/ip_size*100: .3f}% compressed ({diff_size/1024: .3f} kb less)!")
